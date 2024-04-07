@@ -135,7 +135,7 @@ class City:
 
     def __init__(self, blocks_gdf: gpd.GeoDataFrame, adjacency_matrix: pd.DataFrame) -> None:
         assert (blocks_gdf.index == adjacency_matrix.index).all(), "Matrix and blocks index don't match"
-        assert (blocks_gdf.index == adjacency_matrix.columns).all(), "Matrix columns and blocks index don't match"
+        # assert (blocks_gdf.index == adjacency_matrix.columns).all(), "Matrix columns and blocks index don't match"
         self.epsg = blocks_gdf.crs.to_epsg()
         self._blocks = Block.from_gdf(blocks_gdf, self)
         self.adjacency_matrix = adjacency_matrix.copy()

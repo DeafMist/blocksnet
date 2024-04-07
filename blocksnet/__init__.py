@@ -16,4 +16,4 @@ from blocksnet.method.publicspace import PublicSpaceGreedy
 # from blocksnet.method.balancing import MasterPlan
 # from blocksnet.method.provision import ProvisionModel
 from blocksnet.models import BaseRow, City, GeoDataFrame, ServiceType
-from blocksnet.preprocessing import AdjacencyCalculator, GraphGenerator, BlocksGenerator
+from blocksnet.preprocessing import AdjacencyCalculator, GraphGenerator, BlocksGenerator, DataCollector, FileFormatType
