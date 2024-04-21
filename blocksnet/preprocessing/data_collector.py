@@ -5,9 +5,11 @@ import nest_asyncio
 import numpy as np
 import os
 import osmnx as ox
+import shapely
 
 from blocksnet.preprocessing.utils import to_float
-from blocksnet.utils import BUILDING_TYPES, TOTAL_FLATS, FLATS_PER_FLOOR, FLOORS_DEFAULTS, LIVING_BUILDING_TYPES
+from blocksnet.utils import BUILDING_TYPES, TOTAL_FLATS, FLATS_PER_FLOOR, FLOORS_DEFAULTS, LIVING_BUILDING_TYPES, \
+    CAPACITIES
 
 # For the async work
 nest_asyncio.apply()
@@ -133,21 +135,25 @@ class DataCollector:
 
     @staticmethod
     def __valid_floors(raw):
-        raw = str(raw)
-        result = np.nan
-        if raw.find("-") != -1:
-            values = raw.split("-")
-            result = int(float(values[1]) - float(values[0]) + 1)
-        elif raw.find(";") != -1:
-            result = int(raw.split(";")[0])
-        elif raw.isdigit():
-            result = int(raw)
-        return result
+        try:
+            raw = str(raw)
+            result = np.nan
+            if raw.find("-") != -1:
+                values = raw.split("-")
+                result = int(float(values[1]) - float(values[0]) + 1)
+            elif raw.find(";") != -1:
+                result = int(raw.split(";")[0])
+            elif raw.isdigit():
+                result = int(raw)
+            return result
+        except:
+            return np.nan
 
     @staticmethod
     def __validate_floors(gdf: gpd.GeoDataFrame):
         floors_is_not_na = ~gdf["floors"].isna()
-        gdf.loc[floors_is_not_na, "floors"] = gdf[floors_is_not_na]["floors"].apply(lambda x: DataCollector.__valid_floors(x))
+        gdf.loc[floors_is_not_na, "floors"] = gdf[floors_is_not_na]["floors"].apply(
+            lambda x: DataCollector.__valid_floors(x))
         gdf["floors"] = gdf["floors"].astype(float)
 
     @staticmethod
@@ -197,7 +203,8 @@ class DataCollector:
         flats_is_na = gdf["flats"].isna()
         floors_is_not_na = ~gdf["floors"].isna()
 
-        gdf.loc[flats_is_na & floors_is_not_na, "flats"] = gdf.loc[flats_is_na & floors_is_not_na, ["floors", "building"]].apply(
+        gdf.loc[flats_is_na & floors_is_not_na, "flats"] = gdf.loc[
+            flats_is_na & floors_is_not_na, ["floors", "building"]].apply(
             lambda x: FLATS_PER_FLOOR[x["building"]] * int(x["floors"])
             if x["building"] in FLATS_PER_FLOOR.keys() else DataCollector.__total_flats_count(x["building"]), axis=1
         )
@@ -212,11 +219,11 @@ class DataCollector:
         height_is_not_na = ~gdf["height"].isna()
 
         for building in gdf["building"].unique():
-            gdf.loc[(gdf["building"] == building) & flats_is_na, "flats"] =\
+            gdf.loc[(gdf["building"] == building) & flats_is_na, "flats"] = \
                 gdf[(gdf["building"] == building) & flats_is_not_na]["flats"].median()
-            gdf.loc[(gdf["building"] == building) & floors_is_na, "floors"] =\
+            gdf.loc[(gdf["building"] == building) & floors_is_na, "floors"] = \
                 gdf[(gdf["building"] == building) & floors_is_not_na]["floors"].median()
-            gdf.loc[(gdf["building"] == building) & height_is_na, "height"] =\
+            gdf.loc[(gdf["building"] == building) & height_is_na, "height"] = \
                 gdf.loc[(gdf["building"] == building) & height_is_not_na, "height"].median()
 
     @staticmethod
@@ -245,54 +252,61 @@ class DataCollector:
 
     async def __download_basic_geometry(self, tag: dict) -> None:
         tag_name = self.__get_tag_name(tag)
-        gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
-        gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
-        gdf = gpd.GeoDataFrame(geometry=gdf["geometry"]).reset_index(drop=True)
-        gdf = self.__filter_geometry(gdf, tag_name)
-        self.__to_file(gdf, tag_name, ["geometry"])
+        try:
+            gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
+            gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
+            gdf = gpd.GeoDataFrame(geometry=gdf["geometry"]).reset_index(drop=True)
+            gdf = self.__filter_geometry(gdf, tag_name)
+            self.__to_file(gdf, tag_name, ["geometry"])
+        except Exception as ex:
+            print(f"Can't download geometry with name `{tag_name}`. Exception: ", ex)
 
     async def __download_geometry(self, tag: dict) -> None:
         tag_name = self.__get_tag_name(tag)
-        tag["capacity"] = True
-        gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
-        gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
-        gdf["capacity"] = gdf["capacity"].map(lambda x: int(x) if str(x).isdigit() else np.nan)
-        gdf["capacity"] = gdf["capacity"].fillna(int(gdf["capacity"].mean()))
-        gdf = gpd.GeoDataFrame(gdf, geometry=gdf["geometry"]).reset_index(drop=True)
-        gdf = self.__filter_geometry(gdf, tag_name)
-        self.__geometry_to_point(gdf)
-        self.__to_file(gdf, tag_name, ["geometry", "capacity"])
+        try:
+            gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
+            gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
+            gdf["capacity"] = CAPACITIES.get(tag_name, 400)
+            gdf = gpd.GeoDataFrame(gdf, geometry=gdf["geometry"]).reset_index(drop=True)
+            gdf = self.__filter_geometry(gdf, tag_name)
+            self.__geometry_to_point(gdf)
+            self.__to_file(gdf, tag_name, ["geometry", "capacity"])
+        except Exception as ex:
+            print(f"Can't download service with name `{tag_name}`. Exception: ", ex)
 
     async def __download_buildings(self, tag: dict) -> None:
-        gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
-        gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
+        try:
+            gdf = ox.features_from_bbox(*self.__city_bbox, tags=tag)
+            gdf["geometry"] = gdf["geometry"].to_crs(LOCAL_CRS)
 
-        gdf = gdf.loc[:, ["geometry", "building", "building:levels", "height", "building:flats"]]
-        gdf = gdf.rename(columns={"building:levels": "floors", "building:flats": "flats"})
+            gdf = gdf.loc[:, ["geometry", "building", "building:levels", "height", "building:flats"]]
+            gdf = gdf.rename(columns={"building:levels": "floors", "building:flats": "flats"})
 
-        self.__validate_buildings(gdf)
-        self.__validate_floors(gdf)
-        self.__validate_height(gdf)
-        self.__validate_flats(gdf)
+            self.__validate_buildings(gdf)
+            self.__validate_floors(gdf)
+            self.__validate_height(gdf)
+            self.__validate_flats(gdf)
 
-        self.__floors_to_height(gdf)
-        self.__height_to_floors(gdf)
-        self.__fill_na_by_default_floors(gdf)
-        self.__floors_to_flats(gdf)
-        self.__fill_nan_gdf_params_with_median(gdf)
+            self.__floors_to_height(gdf)
+            self.__height_to_floors(gdf)
+            self.__fill_na_by_default_floors(gdf)
+            self.__floors_to_flats(gdf)
+            self.__fill_nan_gdf_params_with_median(gdf)
 
-        self.__fill_is_living(gdf)
-        self.__fill_living_area(gdf)
-        self.__fill_population(gdf)
-        self.__fill_area(gdf)
-        self.__geometry_to_point(gdf)
+            self.__fill_is_living(gdf)
+            self.__fill_living_area(gdf)
+            self.__fill_population(gdf)
+            self.__fill_area(gdf)
+            self.__geometry_to_point(gdf)
 
-        gdf = gdf.drop(columns=["height", "flats"])
+            gdf = gdf.drop(columns=["height", "flats"])
 
-        gdf = gdf[gdf["building"] != "yes"]
+            gdf = gdf[gdf["building"] != "yes"]
 
-        gdf = gpd.GeoDataFrame(gdf, geometry=gdf["geometry"]).reset_index(drop=True)
-        self.__to_file(gdf, "building", ["geometry", "population", "floors", "area", "living_area", "is_living"])
+            gdf = gpd.GeoDataFrame(gdf, geometry=gdf["geometry"]).reset_index(drop=True)
+            self.__to_file(gdf, "building", ["geometry", "population", "floors", "area", "living_area", "is_living"])
+        except Exception as ex:
+            print("Can't download buildings. Exception: ", ex)
 
     def __get_async_task(self, tag: dict):
         tag_name = [tag_name for tag_name, _ in tag.items()][0]

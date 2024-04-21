@@ -265,3 +265,14 @@ LIVING_BUILDING_TYPES = [
     "tree_house",
     "trullo",
 ]
+
+CAPACITIES = {
+    "school": 1200,
+    "kindergarten": 300,
+    "hospital": 700,
+    "clinic": 200,
+    "theatre": 1000,
+    "cinema": 200,
+    "marketplace": 15000,
+    "place_of_worship": 2000,
+}
