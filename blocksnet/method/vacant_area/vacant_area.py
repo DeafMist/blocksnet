@@ -1,3 +1,5 @@
+import asyncio
+import nest_asyncio
 from typing import ClassVar
 
 import geopandas as gpd
@@ -6,6 +8,9 @@ import pandas as pd
 
 from ...models import Block, ServiceType
 from ..base_method import BaseMethod
+
+# For the async work
+nest_asyncio.apply()
 
 
 class VacantArea(BaseMethod):
@@ -18,7 +23,7 @@ class VacantArea(BaseMethod):
     area_attitude: ClassVar[int] = 1.9
 
     @staticmethod
-    def _dwn_other(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_other(block, local_crs) -> gpd.GeoSeries:
         try:
             other = ox.features_from_polygon(block, tags={"man_made": True, "aeroway": True, "military": True})
             other["geometry"] = other["geometry"].to_crs(local_crs)
@@ -27,7 +32,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_leisure(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_leisure(block, local_crs) -> gpd.GeoSeries:
         try:
             leisure = ox.features_from_polygon(block, tags={"leisure": True})
             leisure["geometry"] = leisure["geometry"].to_crs(local_crs)
@@ -36,7 +41,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_landuse(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_landuse(block, local_crs) -> gpd.GeoSeries:
         try:
             landuse = ox.features_from_polygon(block, tags={"landuse": True})
             if not landuse.empty:
@@ -47,7 +52,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_amenity(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_amenity(block, local_crs) -> gpd.GeoSeries:
         try:
             amenity = ox.features_from_polygon(block, tags={"amenity": True})
             amenity["geometry"] = amenity["geometry"].to_crs(local_crs)
@@ -56,7 +61,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_buildings(block, local_crs, buildings_buffer) -> gpd.GeoSeries:
+    async def _dwn_buildings(block, local_crs, buildings_buffer) -> gpd.GeoSeries:
         try:
             buildings = ox.features_from_polygon(block, tags={"building": True})
             if buildings_buffer:
@@ -66,7 +71,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_natural(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_natural(block, local_crs) -> gpd.GeoSeries:
         try:
             natural = ox.features_from_polygon(block, tags={"natural": True})
             if not natural.empty:
@@ -77,7 +82,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_waterway(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_waterway(block, local_crs) -> gpd.GeoSeries:
         try:
             waterway = ox.features_from_polygon(block, tags={"waterway": True})
             waterway["geometry"] = waterway["geometry"].to_crs(local_crs)
@@ -86,13 +91,13 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_highway(block, local_crs, roads_buffer) -> gpd.GeoSeries:
+    async def _dwn_highway(block, local_crs, roads_buffer) -> gpd.GeoSeries:
         try:
             highway = ox.features_from_polygon(block, tags={"highway": True})
             condition = (
-                (highway["highway"] != "path")
-                & (highway["highway"] != "footway")
-                & (highway["highway"] != "pedestrian")
+                    (highway["highway"] != "path")
+                    & (highway["highway"] != "footway")
+                    & (highway["highway"] != "pedestrian")
             )
             filtered_highway = highway[condition]
             if roads_buffer:
@@ -103,7 +108,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_path(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_path(block, local_crs) -> gpd.GeoSeries:
         try:
             tags = {"highway": "path", "highway": "footway"}
             path = ox.features_from_polygon(block, tags=tags)
@@ -113,7 +118,7 @@ class VacantArea(BaseMethod):
             return gpd.GeoSeries()
 
     @staticmethod
-    def _dwn_railway(block, local_crs) -> gpd.GeoSeries:
+    async def _dwn_railway(block, local_crs) -> gpd.GeoSeries:
         try:
             railway = ox.features_from_polygon(block, tags={"railway": True})
             if not railway.empty:
@@ -141,7 +146,7 @@ class VacantArea(BaseMethod):
         gdf = gpd.GeoDataFrame(data).set_index("id").set_crs(epsg=self.city_model.epsg)
         return gdf
 
-    def get_vacant_area(self, block: int | Block) -> gpd.GeoDataFrame:
+    async def __get_vacant_area(self, block: int | Block) -> gpd.GeoDataFrame:
         blocks = self._get_blocks_gdf()
         blocks = gpd.GeoDataFrame(geometry=gpd.GeoSeries(blocks.geometry))
         if block:
@@ -153,18 +158,19 @@ class VacantArea(BaseMethod):
             block_gdf = blocks
             block_buffer = blocks.buffer(20).to_crs(epsg=4326).unary_union
 
-        leisure = self._dwn_leisure(block_buffer, self.local_crs)
-        landuse = self._dwn_landuse(block_buffer, self.local_crs)
-        other = self._dwn_other(block_buffer, self.local_crs)
-        amenity = self._dwn_amenity(block_buffer, self.local_crs)
-        buildings = self._dwn_buildings(block_buffer, self.local_crs, self.buildings_buffer)
-        natural = self._dwn_natural(block_buffer, self.local_crs)
-        waterway = self._dwn_waterway(block_buffer, self.local_crs)
-        highway = self._dwn_highway(block_buffer, self.local_crs, self.roads_buffer)
-        railway = self._dwn_railway(block_buffer, self.local_crs)
-        path = self._dwn_path(block_buffer, self.local_crs)
+        leisure = asyncio.create_task(self._dwn_leisure(block_buffer, self.local_crs))
+        landuse = asyncio.create_task(self._dwn_landuse(block_buffer, self.local_crs))
+        other = asyncio.create_task(self._dwn_other(block_buffer, self.local_crs))
+        amenity = asyncio.create_task(self._dwn_amenity(block_buffer, self.local_crs))
+        buildings = asyncio.create_task(self._dwn_buildings(block_buffer, self.local_crs, self.buildings_buffer))
+        natural = asyncio.create_task(self._dwn_natural(block_buffer, self.local_crs))
+        waterway = asyncio.create_task(self._dwn_waterway(block_buffer, self.local_crs))
+        highway = asyncio.create_task(self._dwn_highway(block_buffer, self.local_crs, self.roads_buffer))
+        railway = asyncio.create_task(self._dwn_railway(block_buffer, self.local_crs))
+        path = asyncio.create_task(self._dwn_path(block_buffer, self.local_crs))
 
         occupied_area = [leisure, other, landuse, amenity, buildings, natural, waterway, highway, railway, path]
+        occupied_area = await asyncio.gather(*occupied_area)
         occupied_area = pd.concat(occupied_area)
         occupied_area = gpd.GeoDataFrame(geometry=gpd.GeoSeries(occupied_area))
 
@@ -204,3 +210,6 @@ class VacantArea(BaseMethod):
         result_gdf = gdf.drop(indices_to_remove)
         result_gdf.reset_index(drop=True, inplace=True)
         return result_gdf
+
+    def get_vacant_area(self, block: int | Block) -> gpd.GeoDataFrame:
+        return asyncio.run(self.__get_vacant_area(block))

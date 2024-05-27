@@ -1,4 +1,5 @@
 import geopandas as gpd
+import numpy as np
 from shapely.geometry import MultiPolygon, Polygon
 
 import pyproj
@@ -145,3 +146,11 @@ def filter_bottlenecks(gdf, projected_crs, min_width=40):
         gdf["area"] = gdf.to_crs(projected_crs).area
 
     return gdf
+
+
+def to_float(value):
+    try:
+        result = float(value)
+    except ValueError:
+        result = np.nan
+    return result
